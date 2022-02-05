@@ -14,23 +14,62 @@ const port = 3000;
 // check the available memory
 const userHomeDir = os.homedir();
 
+// 
 // prepare directory
-let crossdrop_dir_exists = false;
+// 
+let crossdrop_dir_exists_uploads = false;
+let crossdrop_dir_exists_shared = false;
 if( fs.existsSync(userHomeDir+'/crossdrop') ){
-  crossdrop_dir_exists = true;
+  intCrossdropSubfolders();
 } else {
   fs.mkdir(userHomeDir+'/crossdrop', err => {
     if( err ) {
       console.log(err);
     } else {
-      crossdrop_dir_exists = true;
+      crossdrop_dir_exists_uploads = true;
+      intCrossdropSubfolders();
     }
   });
 }
 
+function intCrossdropSubfolders(){
+  if( fs.existsSync(userHomeDir+'/crossdrop/uploads') ){
+    crossdrop_dir_exists_uploads = true;
+  } else {
+    fs.mkdir(userHomeDir+'/crossdrop/uploads', err => {
+      if( err ) {
+        console.log(err);
+      } else {
+        crossdrop_dir_exists_uploads = true;
+      }
+    });
+  }
 
+  if( fs.existsSync(userHomeDir+'/crossdrop/shared') ){
+    crossdrop_dir_exists_shared = true;
+  } else {
+    fs.mkdir(userHomeDir+'/crossdrop/shared', err => {
+      if( err ) {
+        console.log(err);
+      } else {
+        crossdrop_dir_exists_shared = true;
+      }
+    });
+  }
+}
+// 
+
+// 
+// Init server 
+// 
 server.use(express.static(path.join(__dirname, '../public')) );
 server.use(fileUpload());
+// 
+
+
+// 
+// Electron process
+// 
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
@@ -50,7 +89,7 @@ const createWindow = () => {
   });
 
   // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, 'server_ui.html'));
+  mainWindow.loadFile(path.join(__dirname, '../public/server.html'));
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
@@ -79,13 +118,34 @@ app.on('activate', () => {
 });
 
 
-// IPC 
+// 
+// IPC  
+// 
+
 ipcMain.handle("express_server_address", (event) => {
   return getFullAddr()
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
+ipcMain.handle("express_server_folders_path", (event) => {
+
+  return {
+    forUploads: getUplodsFolderPath(),
+    forShared: getSharedFolderPath()
+  } 
+    
+})
+
+
+ipcMain.handle("express_server_uploaded_list", (event) => {
+  return getUploadedFiles();
+})
+
+ipcMain.handle("express_server_shared_list", (event) => {
+  return getSharedFiles();
+})
+
+
+
 
 
 
@@ -110,6 +170,26 @@ server.get('/', (req, res) => {
   });
 })
 
+server.get('/shared_files', (req, res) => {
+  res.json( { list: getSharedFiles() } );
+})
+
+server.get('/shared_files_download/:file_name', (req, res) => {
+  
+  let fname = req.params.file_name;
+  console.log(fname);
+  if( !fname ) {
+    res.json({ error: 'no file name'});
+  }
+
+  // check if file exists
+  if( !fs.existsSync(userHomeDir+'/crossdrop/shared/'+fname) ){
+    res.json({ error: 'file not found'});
+  }
+
+  res.download( userHomeDir+'/crossdrop/shared/'+fname )
+})
+
 // ulpoad a file
 server.post('/upload', function(req, res) {
   let selectedFile;
@@ -126,8 +206,8 @@ server.post('/upload', function(req, res) {
   // uploadPath = __dirname + '/uploads/' + selectedFile.name;
 
   uploadPath = userHomeDir + '/' + selectedFile.name;
-  if( crossdrop_dir_exists ){
-    uploadPath = userHomeDir + '/crossdrop/' + selectedFile.name;
+  if( crossdrop_dir_exists_uploads ){
+    uploadPath = userHomeDir + '/crossdrop/uploads/' + selectedFile.name;
   }
 
   // Use the mv() method to place the file somewhere on your server
@@ -140,6 +220,8 @@ server.post('/upload', function(req, res) {
   });
 });
 
+
+
 // server.get('/server_address', (req, resp) => {
 //   resp.send(getFullAddr());
 // });
@@ -149,7 +231,9 @@ server.listen(port, () => {
 })
 
 
+// 
 // Util
+// 
 
 //
 // get device IP
@@ -159,4 +243,67 @@ function getFullAddr() {
 	// the addres is combination ip:port
 	let fullAddr = ip_addr + ':' + port;
 	return fullAddr;
+}
+
+function getUplodsFolderPath(){
+  return userHomeDir+'/crossdrop/uploads';
+}
+
+function getSharedFolderPath(){
+  return userHomeDir+'/crossdrop/shared';
+}
+
+// scan the uploads folder 
+function getUploadedFiles(){
+  if( !crossdrop_dir_exists_uploads )
+    return [];
+   
+  let detected_files = [];
+  fs.readdirSync(userHomeDir+'/crossdrop/uploads').forEach(file => {
+    // console.log(file);
+    detected_files = [...detected_files, file ];
+  });
+
+  return filesAddMeta(filterOutFiles(detected_files), 'uploads');
+}
+
+// scan the shared folder
+function getSharedFiles(){
+  if( !crossdrop_dir_exists_shared )
+   return [];
+ 
+  let detected_files = [];
+  fs.readdirSync(userHomeDir+'/crossdrop/shared').forEach(file => {
+    // console.log(file);
+    detected_files = [ ...detected_files, file ];
+  });
+
+  return filesAddMeta(filterOutFiles(detected_files), 'shared');
+}
+
+function filterOutFiles(files){
+    let excluded = [ '.DS_Store' ];
+    files = files.filter( (f) => {
+      return !excluded.includes(f);
+    });
+
+    return files;
+}
+
+function filesAddMeta(files, sub_dir){
+    if(!sub_dir)
+      return false;
+
+    let sub_path = userHomeDir+'/crossdrop/'+sub_dir+'/';
+
+    files = files.map( (f) => {
+      let s = fs.statSync(sub_path+f).size;
+      return {
+        name: f, 
+        size: s,
+        size_formated: s < 1024 ? s+" KB": ( s / ( 1024 * 1024 ) ).toFixed(2) + " MB"
+      }
+    });
+
+    return files;
 }
