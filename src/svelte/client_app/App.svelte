@@ -5,6 +5,8 @@
     const shared_endpoint = "/shared_files";
     const shared_endpoint_download = "/shared_files_download";
     const enctype = "multipart/form-data";
+    const get_clipboard = "/getClipboardData";
+    const set_clipboard = "/setClipboardData";
     let msg = "";
     let uploading = false;
     let clipboard_data = '';
@@ -24,9 +26,9 @@
         // {file_name: 'test2', status: UPLOADED}
     ];
 
-    // let selectedTab = 'clipboard';
+    let selectedTab = 'clipboard';
     // let selectedTab = 'upload';
-    let selectedTab = 'download';
+    // let selectedTab = 'download';
     let dragOverActive = false;
 
 
@@ -36,8 +38,40 @@
         const updateShared = setInterval( () => {
             getSharedFilesList();
         }, 2000 );
+
+        let lp = setInterval( checkClipboard, 500);
     } );
     
+    $: sendClipboardData(clipboard_data);
+
+    function sendClipboardData(data) {
+    
+        fetch( set_clipboard, {
+            method: 'POST',
+            headers: {
+                "Content-type": "application/json; charset=UTF-8"
+            },
+            body: JSON.stringify({ data: data })
+        }).then(res => {
+            // console.log(res);
+        }).catch(e => {
+            console.log(e);
+        })
+       
+    }
+    function checkClipboard() {
+        fetch( get_clipboard, {
+            method: 'GET'
+        }).then( res => {
+            return res.json();
+        }).then(res => {
+            // console.log(res);
+            if(res.hasOwnProperty('data'))
+                clipboard_data = res.data;
+        }).catch(e => {
+            console.log(e);
+        })
+    }
 
     function setactiveTab(tabname){
         selectedTab = tabname;
@@ -118,7 +152,7 @@
         }).then(res => {
             return res.json();
         }).then(res => {
-            console.log(res);
+            // console.log(res);
             if( res.list && res.list.length > 0 ){
                 sharedFiles = res.list;
             }

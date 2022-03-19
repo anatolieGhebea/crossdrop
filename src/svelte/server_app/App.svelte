@@ -1,7 +1,7 @@
 <script>
 
     import { onMount } from 'svelte';
-
+    
     let clipboard_data = '';
     let current_address = false;
     let log_msg = 'The application is beeing initialised, please wait...';
@@ -11,7 +11,7 @@
     let sharedFiles = [];
     let folderUploaded = '__folder-name___';
     let folderShared = '__folder-name___';
-    let force_update = false;
+    let force_update = false; 
 
     const main_proxy_proccess = window.main_proccess_proxy ? true: false;
 
@@ -23,6 +23,8 @@
             if( current_address )
                 updateSharedList();
         }, 5000 );
+
+        let lp = setInterval( checkClipboard, 500);
     });
 
     $: updateLists(current_address, force_update);
@@ -40,7 +42,6 @@
         .getExpressServerAddress()
         .then( res => {
             refreshRequest = false;
-            console.log(res);
             if( res ) {
                 current_address = res;
                 log_msg = "Application ready";
@@ -49,6 +50,30 @@
                 log_msg = "Some error occured, please restart the application";    
             }
         });
+    }
+
+    $: sendClipboardData(clipboard_data);
+
+    function sendClipboardData(data) {
+        if( !window.main_proccess_proxy.setClipbaordData ) return;
+
+        window
+        .main_proccess_proxy
+        .setClipbaordData({data: data})
+        .then(res => {
+            // console.log(res);
+        })
+    }
+
+    function checkClipboard() {
+        if( !window.main_proccess_proxy.getClipbaordData ) return;
+        
+        window
+        .main_proccess_proxy
+        .getClipbaordData()
+        .then(res => {
+            clipboard_data = res;
+        })
     }
 
     function updateLists( Addr, Force) {
@@ -74,7 +99,7 @@
         .main_proccess_proxy
         .getExpressServerUploadedList()
         .then( res => {
-            console.log(res);
+            // console.log(res);
             if( res ) {
                 uploadedFiles = res;
             } 
@@ -95,7 +120,7 @@
         .main_proccess_proxy
         .getExpressServerSharedList()
         .then( res => {
-            console.log(res);
+            // console.log(res);
             if( res ) {
                 sharedFiles = res;
             } 

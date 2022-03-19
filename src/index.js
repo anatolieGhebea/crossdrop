@@ -9,8 +9,9 @@ const os = require("os");
 const express = require('express');
 const fileUpload = require('express-fileupload');
 const ip = require('ip');
-const server = express();
+const express_app = express();
 const port = 3000;
+
 // check the available memory
 const userHomeDir = os.homedir();
 
@@ -62,8 +63,9 @@ function intCrossdropSubfolders(){
 // 
 // Init server 
 // 
-server.use(express.static(path.join(__dirname, '../public')) );
-server.use(fileUpload());
+express_app.use(express.static(path.join(__dirname, '../public')) );
+express_app.use(fileUpload());
+express_app.use(express.json());
 // 
 
 
@@ -75,17 +77,21 @@ server.use(fileUpload());
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
   app.quit();
 }
-
+let mainWindow;
 const createWindow = () => {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1240,
     height: 920,
+    x: 50,
+    y: 50,
     webPreferences: {
       preload: path.join(__dirname, 'js_server/preload.js'),
       nodeIntegration: true,
+      enableRemoteModule: false,
       contextIsolation: true
-    }
+    },
+    backgroundColor: '#f5f5f5'
   });
 
   // and load the index.html of the app.
@@ -93,6 +99,7 @@ const createWindow = () => {
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
 };
 
 // This method will be called when Electron has finished
@@ -107,6 +114,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+
+  mainWindow = null;
 });
 
 app.on('activate', () => {
@@ -124,6 +133,18 @@ app.on('activate', () => {
 
 ipcMain.handle("express_server_address", (event) => {
   return getFullAddr()
+})
+
+ipcMain.handle("get_clipboard_data", (event) => {
+  return getClipboardData()
+})
+
+ipcMain.handle("set_clipboard_data", (event, data) => {
+  //
+  if( data.hasOwnProperty('data') )
+    setClipboardData(data.data);
+  
+  return true;
 })
 
 ipcMain.handle("express_server_folders_path", (event) => {
@@ -154,7 +175,7 @@ ipcMain.handle("express_server_shared_list", (event) => {
 //
 
 // home page
-server.get('/', (req, res) => {
+express_app.get('/', (req, res) => {
   // res.send('Hello World!');
   var options = {
       root: path.join(__dirname)
@@ -170,11 +191,23 @@ server.get('/', (req, res) => {
   });
 })
 
-server.get('/shared_files', (req, res) => {
+express_app.get('/shared_files', (req, res) => {
   res.json( { list: getSharedFiles() } );
 })
 
-server.get('/shared_files_download/:file_name', (req, res) => {
+express_app.get('/getClipboardData', (req, res) => {
+  res.json( { data: getClipboardData() } );
+})
+express_app.post('/setClipboardData', (req, res) => {
+  if( req.body && req.body.hasOwnProperty('data') ){
+    setClipboardData(req.body.data)
+    return res.json( { status: true } );
+  }
+
+  return res.json( { status: false } );
+})
+
+express_app.get('/shared_files_download/:file_name', (req, res) => {
   
   let fname = req.params.file_name;
   console.log(fname);
@@ -191,7 +224,7 @@ server.get('/shared_files_download/:file_name', (req, res) => {
 })
 
 // ulpoad a file
-server.post('/upload', function(req, res) {
+express_app.post('/upload', function(req, res) {
   let selectedFile;
   let uploadPath;
 
@@ -210,7 +243,7 @@ server.post('/upload', function(req, res) {
     uploadPath = userHomeDir + '/crossdrop/uploads/' + selectedFile.name;
   }
 
-  // Use the mv() method to place the file somewhere on your server
+  // Use the mv() method to place the file somewhere on your express_app
   selectedFile.mv(uploadPath, function(err) {
     if (err)
       return res.status(500).send(err);
@@ -221,12 +254,7 @@ server.post('/upload', function(req, res) {
 });
 
 
-
-// server.get('/server_address', (req, resp) => {
-//   resp.send(getFullAddr());
-// });
-
-server.listen(port, () => {
+express_app.listen(port, () => {
   console.log(`Example server listening at ${getFullAddr()}`);
 })
 
@@ -234,7 +262,7 @@ server.listen(port, () => {
 // 
 // Util
 // 
-
+let clipboard_data = '';
 //
 // get device IP
 //
@@ -243,6 +271,14 @@ function getFullAddr() {
 	// the addres is combination ip:port
 	let fullAddr = ip_addr + ':' + port;
 	return fullAddr;
+}
+
+function getClipboardData() {
+	return clipboard_data;
+}
+
+function setClipboardData(data) {
+	clipboard_data = data;
 }
 
 function getUplodsFolderPath(){

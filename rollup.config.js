@@ -27,6 +27,9 @@ function getConfig( fList ){
 			external: ['crypto'],
 			input: 'src/svelte/'+f.folder+'/'+f.fileName+'.js',
 			output: {
+				globals: {
+					'crypto': 'crypto'
+				},
 				sourcemap: true,
 				format: 'iife',
 				name: f.fileName,
